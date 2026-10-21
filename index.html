@@ -1,0 +1,1008 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Правки Вікіпедії наживо</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Literata:ital,opsz,wght@0,7..72,300..600;1,7..72,300..600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --zoom: 1;
+    --ctx: #ebe4d4; --dim: rgba(235, 228, 212, .5); --del: #e5735f; --ins: #f2c46c; --bot: #9cc3ff;
+    --serif: "Literata", Georgia, "Times New Roman", serif;
+    --mono: "IBM Plex Mono", "SF Mono", Menlo, monospace;
+  }
+  html, body { margin: 0; height: 100%; overflow: hidden; color: var(--ctx);
+               background: radial-gradient(ellipse at 50% 42%, #0e0d10 0%, #070709 55%, #040405 100%); }
+  body.nocursor { cursor: none; }
+  #gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+  #gl:active { cursor: grabbing; }
+  #overlay { position: fixed; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+
+  #stage { position: fixed; inset: 0; pointer-events: none; }
+  .edit { position: absolute; left: 5vw; top: calc(30% - (var(--zoom) - 1) * 12%); width: min(calc(41vw + (var(--zoom) - 1) * 40vw), 90vw);
+          transform: translate(0, 0); transform-origin: 50% 50%;
+          transition: transform 1.8s cubic-bezier(.2, .75, .15, 1), opacity 1.8s ease, filter 1.8s ease; }
+  .edit.enter { opacity: 0; filter: blur(12px); transform: translate(0, 24px); }
+  .edit.past { transition: transform 1.4s cubic-bezier(.55, 0, .75, .4), opacity 1.2s ease .3s, filter 1.2s ease; }
+
+  .meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 22px; margin: 0 0 26px 2px;
+          font: 500 12px/1 var(--mono); letter-spacing: .24em; text-transform: uppercase; color: var(--dim);
+          text-shadow: 0 0 14px #060608, 0 0 4px #060608; }
+  .meta .who { color: var(--ins); }
+  .edit.bot .meta .who { color: var(--bot); }
+  .meta .title { font: italic 400 20px/1.2 var(--serif); letter-spacing: .01em; text-transform: none; color: rgba(235, 228, 212, .85); }
+  .meta .delta { margin-left: auto; }
+
+  .line { font-family: var(--serif); font-weight: 400; font-size: calc(clamp(22px, 2.35vw, 48px) * var(--zoom)); line-height: 1.28;
+          white-space: pre-wrap; font-optical-sizing: auto; text-wrap: pretty;
+          text-shadow: 0 0 34px rgba(6, 6, 8, .95), 0 0 10px rgba(6, 6, 8, .9); }
+  .ctx { color: var(--ctx); }
+  .del { color: var(--del); background: linear-gradient(var(--del), var(--del)) no-repeat 0 62% / 0% .06em;
+         transition: background-size .55s cubic-bezier(.6, 0, .2, 1);
+         -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+  .del.strike { background-size: 100% .06em; }
+  .ins { color: var(--ins); background: linear-gradient(currentColor, currentColor) no-repeat 0 97% / 100% .035em;
+         transition: color 3s ease, background-size 3s ease;
+         -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+  .edit.bot .ins { color: var(--bot); }
+  .ins.settled { color: #f3dfb4; background-size: 0% .035em; }
+  .edit.bot .ins.settled { color: #d3e3ff; }
+  .w { white-space: nowrap; }
+  .ins .ch { display: none; }
+  .ins .ch.on { display: inline; animation: chIn .24s ease-out both; }
+  @keyframes chIn { from { opacity: 0; filter: blur(6px); } to { opacity: 1; filter: none; } }
+  .caret { display: inline-block; width: .055em; height: 1em; margin: 0 .02em; vertical-align: -.15em;
+           background: var(--ins); animation: blink 1.05s steps(1) infinite; }
+  .caret.typing { animation: none; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .ghost { position: fixed; pointer-events: none; font-family: var(--serif); color: var(--del); white-space: pre;
+           animation: ghost 1s cubic-bezier(.3, 0, .6, 1) forwards; }
+  @keyframes ghost { to { transform: translateY(-.9em) rotate(var(--r)); opacity: 0; filter: blur(9px); } }
+  .flash { animation: flash 1.1s ease-out; }
+  @keyframes flash { from { text-shadow: 0 0 .35em currentColor, 0 0 1.4em currentColor; } to { text-shadow: 0 0 34px rgba(6,6,8,.95); } }
+
+  .ui { position: fixed; pointer-events: none; font: 400 11px/1.6 var(--mono); letter-spacing: .14em;
+        color: rgba(235, 228, 212, .45); transition: opacity .8s; text-shadow: 0 0 8px #060608, 0 0 3px #060608; }
+  #label { left: 32px; top: 26px; letter-spacing: .3em; text-transform: uppercase; }
+  #hud { left: 32px; bottom: 22px; letter-spacing: .08em; }
+  #hud b { color: var(--ins); font-weight: 500; }
+  #hud i { font-style: normal; color: var(--bot); }
+  #hud s { text-decoration: none; color: var(--del); }
+  #hint { right: 32px; top: 52px; text-align: right; letter-spacing: .06em; }
+  .off { opacity: 0 !important; }
+
+  /* what was written while the lecture went on: the edit on stage gives way to this */
+  #stage { transition: opacity 1s ease; }
+  body.lecture #stage { opacity: 0; }
+  #lecture { position: fixed; left: 5vw; top: 15%; width: min(46vw, 920px); pointer-events: none;
+             opacity: 0; transform: translateY(18px); filter: blur(8px);
+             transition: opacity 1.2s ease, transform 1.4s cubic-bezier(.2, .75, .15, 1), filter 1.2s ease;
+             text-shadow: 0 0 34px rgba(6, 6, 8, .95), 0 0 10px rgba(6, 6, 8, .9); }
+  #lecture.on { opacity: 1; transform: none; filter: none; }
+  #lecture .k { font: 500 12px/1 var(--mono); letter-spacing: .24em; text-transform: uppercase; color: var(--dim); margin: 0 0 18px 2px; }
+  #lecture .big { font: 300 clamp(64px, 8vw, 168px)/.95 var(--serif); color: var(--ins); font-variant-numeric: tabular-nums; }
+  #lecture .sub { font: italic 400 clamp(18px, 1.7vw, 32px)/1.3 var(--serif); color: rgba(235, 228, 212, .85); margin: 12px 0 34px 2px; }
+  #lecture .row { font: 400 clamp(18px, 1.55vw, 30px)/1.5 var(--serif); margin-left: 2px; }
+  #lecture .row b { font-weight: 500; color: var(--ins); font-variant-numeric: tabular-nums; }
+  #lecture .row i { font-style: normal; color: var(--bot); font-variant-numeric: tabular-nums; }
+  #lecture .top { margin-top: 36px; }
+  #lecture .top .k { margin-bottom: 12px; }
+  #lecture .art { font: italic 400 clamp(16px, 1.35vw, 26px)/1.45 var(--serif); color: rgba(235, 228, 212, .85); margin-left: 2px; }
+  #lecture .art span { font: 500 11px/1 var(--mono); font-style: normal; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); margin-left: 14px; white-space: nowrap; }
+</style>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="overlay"></canvas>
+<div id="stage"></div>
+<div id="lecture"></div>
+<div id="label" class="ui">Вікіпедія зараз · поверхня — мовні розділи · ядро — Вікідані, спільні поняття · промінь — стаття про поняття · тепле — люди, холодне — боти, червоне — стерте</div>
+<div id="hud" class="ui"></div>
+<div id="hint" class="ui">мишка — крутити й наближати · R — обертання · U — лише українська · + − 0 — розмір правки<br>↑ ↓ — темп · H — підписи · F — повний екран · L — підсумок лекції · Shift+L — почати відлік</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const $ = s => document.querySelector(s);
+const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+let tempo = 1;
+const sleep = ms => new Promise(r => setTimeout(r, ms / tempo));
+const seg = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+const graphemes = s => [...seg.segment(s)].map(x => x.segment);
+const NSFW = /\b(sex\w*|porn\w*|fuck\w*|nude|naked|rape\w*|nazi\w*)\b|секс|порн|оголен|ґвалт|хуй|пизд|бля/i;
+const MONO = '"IBM Plex Mono", "SF Mono", Menlo, monospace';
+const nowS = () => performance.now() / 1000;
+function hash(str) { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+function rng(seed) { let s = seed || 1; return () => { s = Math.imul(s ^ (s >>> 15), 1 | s); s ^= s + Math.imul(s ^ (s >>> 7), 61 | s); return ((s ^ (s >>> 14)) >>> 0) / 4294967296; }; }
+
+// ================= scene =================
+// The surface of the sphere: language editions of Wikipedia. The core: Wikidata — the shared concepts.
+// A ray joins an article to the concept it is about; many languages writing about one concept meet in one point.
+const glCanvas = $('#gl'), overlay = $('#overlay'), ctx = overlay.getContext('2d');
+const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x000000, 0);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, .05, 50);
+camera.position.set(0, .4, 4.4);
+const controls = new OrbitControls(camera, glCanvas);
+controls.enableDamping = true; controls.dampingFactor = .06;
+controls.autoRotate = true; controls.autoRotateSpeed = .45;
+controls.enablePan = false; controls.minDistance = 1.6; controls.maxDistance = 6;
+const world = new THREE.Group();
+scene.add(world);
+
+const LANGS = ['en', 'de', 'fr', 'es', 'it', 'ja', 'ru', 'pl', 'uk', 'zh', 'pt', 'nl', 'ar', 'fa', 'sv', 'he', 'ko', 'tr', 'vi', 'id', 'cs', 'other'];
+const anchors = new Map();
+LANGS.forEach((k, i) => {   // languages spread evenly over the sphere
+  const y = 1 - (i + .5) / LANGS.length * 2, r = Math.sqrt(1 - y * y), phi = i * Math.PI * (3 - Math.sqrt(5));
+  anchors.set(k, new THREE.Vector3(Math.cos(phi) * r, y, Math.sin(phi) * r));
+});
+// Ukrainian faces the hall when the page opens
+world.quaternion.setFromUnitVectors(anchors.get('uk').clone(), new THREE.Vector3(0, .15, 1).normalize());
+const COLORS = [[1, .72, .4], [.42, .62, 1], [.93, .38, .3]];   // person, bot, removed text
+const COLORS_CSS = ['255,190,112', '110,162,255', '236,104,86'];
+
+function fadeLines(color, opacity) {
+  return new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: new THREE.Color(color) }, uOp: { value: opacity } },
+    vertexShader: `varying float vF; void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.); vF = mix(.12, 1., smoothstep(-5.0, -3.9, mv.z)); gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform vec3 uColor; uniform float uOp; varying float vF; void main(){ gl_FragColor = vec4(uColor, uOp * vF); }`,
+    transparent: true, depthWrite: false,
+  });
+}
+// a faint globe and a faint core shell
+{
+  const pts = [];
+  for (let lat = -75; lat <= 75; lat += 15) for (let i = 0; i < 96; i++) {
+    const a0 = i / 96 * Math.PI * 2, a1 = (i + 1) / 96 * Math.PI * 2, y = Math.sin(lat * Math.PI / 180), r = Math.cos(lat * Math.PI / 180);
+    pts.push(Math.cos(a0) * r, y, Math.sin(a0) * r, Math.cos(a1) * r, y, Math.sin(a1) * r);
+  }
+  for (let lon = 0; lon < 180; lon += 20) for (let i = 0; i < 64; i++) {
+    const b0 = i / 64 * Math.PI * 2, b1 = (i + 1) / 64 * Math.PI * 2, l = lon * Math.PI / 180;
+    pts.push(Math.cos(b0) * Math.cos(l), Math.sin(b0), Math.cos(b0) * Math.sin(l), Math.cos(b1) * Math.cos(l), Math.sin(b1), Math.cos(b1) * Math.sin(l));
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  world.add(new THREE.LineSegments(g, fadeLines(0xebe4d4, .04)));
+  // a faint border around each language's region
+  for (const [key, anchor] of anchors) {
+    const t1 = new THREE.Vector3().crossVectors(anchor, new THREE.Vector3(0, 1, .0001)).normalize(), t2 = new THREE.Vector3().crossVectors(anchor, t1);
+    const ring = [], rho = .37;
+    for (let i = 0; i < 72; i++) for (const k of [i, i + 1]) {
+      const f = k / 72 * Math.PI * 2;
+      const v = anchor.clone().multiplyScalar(Math.cos(rho)).addScaledVector(t1, Math.cos(f) * Math.sin(rho)).addScaledVector(t2, Math.sin(f) * Math.sin(rho));
+      ring.push(v.x, v.y, v.z);
+    }
+    const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(ring, 3));
+    world.add(new THREE.LineSegments(rg, key === 'uk' ? fadeLines(0xffd696, .22) : fadeLines(0xebe4d4, .085)));
+  }
+  const shell = [];
+  for (let i = 0; i < 700; i++) {
+    const y = 1 - (i + .5) / 700 * 2, r = Math.sqrt(1 - y * y), phi = i * Math.PI * (3 - Math.sqrt(5));
+    shell.push(Math.cos(phi) * r * .6, y * .6, Math.sin(phi) * r * .6);
+  }
+  const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(shell, 3));
+  world.add(new THREE.Points(sg, new THREE.PointsMaterial({ color: 0x8fb0ff, size: 1.2, sizeAttenuation: false, transparent: true, opacity: .16, depthWrite: false })));
+}
+
+// ================= point clouds and rays with fixed capacity =================
+const pointMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 }, uPix: { value: 1 } },
+  vertexShader: `
+    attribute vec3 aColor; attribute float aSize; attribute float aT;
+    uniform float uTime, uPix;
+    varying vec3 vColor; varying float vGlow, vFade, vAge;
+    void main(){
+      vec4 mv = modelViewMatrix * vec4(position, 1.);
+      float age = max(0., uTime - aT);
+      vGlow = exp(-age * 1.7);                       // a fresh edit flares
+      vAge = .45 + .55 * exp(-age / 70.);            // and slowly fades
+      vFade = mix(.07, 1., smoothstep(-5.0, -3.9, mv.z));   // the far side of the sphere is much dimmer
+      vColor = aColor;
+      gl_PointSize = aSize * (1. + 2.6 * vGlow) * uPix * 4.2 / -mv.z;
+      gl_Position = projectionMatrix * mv;
+      if (aSize <= 0.) gl_Position = vec4(2., 2., 2., 1.);
+    }`,
+  fragmentShader: `
+    varying vec3 vColor; varying float vGlow, vFade, vAge;
+    void main(){
+      float d = length(gl_PointCoord - .5);
+      float core = smoothstep(.5, .12, d), halo = smoothstep(.5, 0., d) * .5;
+      float a = (core + halo * vGlow) * vFade * vAge;
+      gl_FragColor = vec4(vColor * (1. + 1.4 * vGlow), a);
+    }`,
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+});
+const lineMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 } },
+  vertexShader: `
+    attribute vec3 aColor; attribute float aT; attribute float aBase;
+    uniform float uTime; varying vec3 vColor; varying float vA;
+    void main(){
+      vec4 mv = modelViewMatrix * vec4(position, 1.);
+      float glow = exp(-max(0., uTime - aT) * 1.1);
+      vA = (aBase + .8 * glow) * mix(.15, 1., smoothstep(-5.0, -3.9, mv.z));   // a ray flashes with an edit; it stays only where languages meet
+      vColor = aColor;
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `varying vec3 vColor; varying float vA; void main(){ gl_FragColor = vec4(vColor, vA); }`,
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+});
+
+function makeCloud(cap) {
+  const g = new THREE.BufferGeometry();
+  const pos = new Float32Array(cap * 3), col = new Float32Array(cap * 3), size = new Float32Array(cap), t = new Float32Array(cap).fill(-1e4);
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('aColor', new THREE.BufferAttribute(col, 3));
+  g.setAttribute('aSize', new THREE.BufferAttribute(size, 1));
+  g.setAttribute('aT', new THREE.BufferAttribute(t, 1));
+  const pts = new THREE.Points(g, pointMat); pts.frustumCulled = false; world.add(pts);
+  const free = []; for (let i = cap - 1; i >= 0; i--) free.push(i);
+  return { g, pos, col, size, t, free, dirty: true };
+}
+function makeRays(cap) {
+  const g = new THREE.BufferGeometry();
+  const pos = new Float32Array(cap * 6), col = new Float32Array(cap * 6), t = new Float32Array(cap * 2).fill(-1e4), base = new Float32Array(cap * 2);
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('aColor', new THREE.BufferAttribute(col, 3));
+  g.setAttribute('aT', new THREE.BufferAttribute(t, 1));
+  g.setAttribute('aBase', new THREE.BufferAttribute(base, 1));
+  const ls = new THREE.LineSegments(g, lineMat); ls.frustumCulled = false; world.add(ls);
+  const free = []; for (let i = cap - 1; i >= 0; i--) free.push(i);
+  return { g, pos, col, t, base, free };
+}
+const ART_CAP = 1700, Q_CAP = 2600;
+const arts = makeCloud(ART_CAP), qs = makeCloud(Q_CAP), rays = makeRays(ART_CAP);
+
+const nodeByKey = new Map(), nodeById = new Map(), qById = new Map();
+let focusNode = null, link = null;
+const recentTitles = [];
+
+function setPoint(cloud, slot, v, c, size, t) {
+  cloud.pos.set([v.x, v.y, v.z], slot * 3);
+  if (c) cloud.col.set(c, slot * 3);
+  if (size != null) cloud.size[slot] = size;
+  if (t != null) cloud.t[slot] = t;
+  cloud.dirty = true;
+}
+function setRay(a) {
+  const s = a.ray; if (s == null) return;
+  rays.pos.set([a.p.x, a.p.y, a.p.z, a.q.p.x, a.q.p.y, a.q.p.z], s * 6);
+}
+// rays stay visible only for concepts that several languages are writing about right now
+function shareRays(q) {
+  const b = q.arts.size > 1 ? .16 : 0;
+  for (const x of q.arts) if (x.ray != null) rays.base[x.ray * 2] = rays.base[x.ray * 2 + 1] = b;
+}
+function freeArt(a) {
+  arts.size[a.slot] = 0; arts.free.push(a.slot); arts.dirty = true;
+  if (a.ray != null) { rays.pos.fill(0, a.ray * 6, a.ray * 6 + 6); rays.base[a.ray * 2] = rays.base[a.ray * 2 + 1] = 0; rays.free.push(a.ray); a.ray = null; }
+  if (a.q) { a.q.arts.delete(a); shareRays(a.q); }
+  nodeByKey.delete(a.key); if (a.id) nodeById.delete(a.id);
+  if (focusNode === a) focusNode = null;
+}
+
+// where an article sits: in its language's region of the surface, at a stable place
+function articlePos(wiki, title) {
+  const anchor = anchors.get(LANGS.includes(wiki) ? wiki : 'other'), r = rng(hash(wiki + '|' + title));
+  const t1 = new THREE.Vector3().crossVectors(anchor, new THREE.Vector3(0, 1, 0.0001)).normalize(), t2 = new THREE.Vector3().crossVectors(anchor, t1);
+  const g = () => (r() + r() + r() - 1.5) * .26;          // roughly normal spread: each language is a compact region
+  return anchor.clone().addScaledVector(t1, g()).addScaledVector(t2, g()).normalize().multiplyScalar(.985 + r() * .03);
+}
+
+function getQ(id) {
+  let q = qById.get(id);
+  if (q) return q;
+  if (!qs.free.length) {          // forget the quietest concept that no article holds
+    let old = null;
+    for (const c of qById.values()) if (!c.arts.size && (!old || c.lastT < old.lastT)) old = c;
+    if (!old) return null;
+    qs.size[old.slot] = 0; qs.free.push(old.slot); qById.delete(old.id);
+  }
+  const r = rng(hash(id)), dir = new THREE.Vector3(r() - .5, r() - .5, r() - .5).normalize();
+  q = { id, slot: qs.free.pop(), arts: new Set(), lastT: nowS(), p: dir.multiplyScalar(.12 + r() * .25), target: null };
+  q.target = q.p.clone();
+  setPoint(qs, q.slot, q.p, COLORS[1].map(v => v * .8), 1.3, -1e4);
+  qById.set(id, q);
+  return q;
+}
+// a concept sinks deeper the more languages write about it, under the languages that do
+// A concept written about in many languages sinks towards the centre; a local topic stays near the surface.
+const depthFor = langs => .93 - .78 * Math.log(1 + langs) / Math.log(301);
+function placeQ(q) {
+  if (!q.arts.size) return;
+  const sum = new THREE.Vector3();
+  for (const a of q.arts) sum.add(a.p);
+  const n = q.arts.size, depth = q.langs ? depthFor(q.langs) : .6;
+  if (sum.lengthSq() < .01) sum.set(0, 1, 0);
+  q.target.copy(sum.normalize().multiplyScalar(depth));
+  qs.size[q.slot] = 1.1 + Math.min(3, n) * .4 + (q.langs ? Math.log(1 + q.langs) * .28 : 0);
+}
+
+function linkArticle(wiki, title, qid, langs) {
+  const a = nodeByKey.get(`${wiki}|${title}`);
+  if (!a) return;
+  const q = getQ(qid); if (!q) return;
+  if (langs) q.langs = Math.max(q.langs || 0, langs);
+  if (a.q === q) { placeQ(q); return; }
+  if (a.q) { a.q.arts.delete(a); shareRays(a.q); }
+  a.q = q; q.arts.add(a);
+  if (a.ray == null && rays.free.length) a.ray = rays.free.pop();
+  if (a.ray != null) {
+    const c = COLORS[a.cls];
+    rays.col.set([...c, ...c.map(v => v * .55)], a.ray * 6);
+    rays.t[a.ray * 2] = rays.t[a.ray * 2 + 1] = a.lastT;
+  }
+  placeQ(q);
+  shareRays(q);
+}
+
+// Wikimedia answers 429 when it is asked too often; then that site rests, a little longer each time.
+// The sphere runs for the whole lecture, so it asks gently.
+const resting = new Map();
+const isResting = host => (resting.get(host)?.until || 0) > performance.now();
+async function wmJSON(url) {
+  const host = new URL(url).host, r0 = resting.get(host);
+  if (isResting(host)) throw new Error('resting');
+  const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+  if (res.status === 429) { const wait = Math.min(120000, (r0?.wait || 7500) * 2); resting.set(host, { until: performance.now() + wait, wait }); throw new Error('429'); }
+  if (r0) resting.delete(host);
+  return res.json();
+}
+
+// Wikidata item lookups for new articles, batched per language
+const qQueue = new Map();
+let qInflight = 0;
+setInterval(() => {
+  for (const [wiki, set] of qQueue) {
+    if (qInflight >= 2 || !set.size || isResting(`${wiki}.wikipedia.org`)) continue;
+    const titles = [...set].slice(0, 12);
+    titles.forEach(t => set.delete(t));
+    qInflight++;
+    // the concept behind each article, and in how many languages it exists
+    const u = `https://${wiki}.wikipedia.org/w/api.php?action=query&prop=pageprops|langlinks&ppprop=wikibase_item&lllimit=max&redirects=1&titles=${encodeURIComponent(titles.join('|'))}&format=json&formatversion=2&origin=*`;
+    wmJSON(u).then(j => {
+      const back = new Map();
+      for (const n of j?.query?.normalized || []) back.set(n.to, n.from);
+      for (const r of j?.query?.redirects || []) back.set(r.to, back.get(r.from) || r.from);
+      for (const p of j?.query?.pages || []) {
+        const qid = p.pageprops?.wikibase_item;
+        if (qid) linkArticle(wiki, back.get(p.title) || p.title, qid, 1 + (p.langlinks?.length || 0));
+      }
+    }).catch(() => {}).finally(() => { qInflight--; });
+  }
+}, 1200);
+
+// an edit arrives
+function addToGraph(item, quiet) {
+  if (NSFW.test(item.title)) return;
+  const t = quiet ? nowS() - 40 : nowS();
+  const cls = item.delta < 0 ? 2 : item.bot ? 1 : 0;
+  if (item.wiki === 'wikidata') {
+    if (!/^Q\d+$/.test(item.title)) return;
+    const q = getQ(item.title); if (!q) return;
+    q.lastT = t;
+    setPoint(qs, q.slot, q.p, COLORS[cls], null, t);
+    for (const a of q.arts) if (a.ray != null) rays.t[a.ray * 2] = rays.t[a.ray * 2 + 1] = t;   // the concept lights up its articles
+    return;
+  }
+  const wiki = item.wiki, key = `${wiki}|${item.title}`;
+  let a = nodeByKey.get(key);
+  if (!a) {
+    if (!arts.free.length) {
+      let old = null;
+      for (const n of nodeByKey.values()) if (n !== focusNode && (!old || n.lastT < old.lastT)) old = n;
+      if (old) freeArt(old);
+    }
+    a = { key, wiki, title: item.title, slot: arts.free.pop(), p: articlePos(wiki, item.title), edits: 0, q: null, ray: null, cls };
+    nodeByKey.set(key, a);
+    if (!qQueue.has(wiki)) qQueue.set(wiki, new Set());
+    const pending = qQueue.get(wiki);
+    pending.add(item.title);
+    if (pending.size > 60) pending.delete(pending.values().next().value);   // while a site rests, keep only the newest titles
+  }
+  a.edits++; a.cls = cls; a.lastT = t;
+  if (item.id) { a.id = item.id; nodeById.set(item.id, a); if (nodeById.size > 6000) nodeById.delete(nodeById.keys().next().value); }
+  setPoint(arts, a.slot, a.p, COLORS[cls], 2.1 + Math.log2(1 + a.edits) * .9, t);
+  if (a.ray != null) {
+    const c = COLORS[cls];
+    rays.col.set([...c, ...c.map(v => v * .55)], a.ray * 6);
+    rays.t[a.ray * 2] = rays.t[a.ray * 2 + 1] = t;
+    if (!quiet) { a.q.lastT = t; qs.t[a.q.slot] = t - .25; qs.dirty = true; }
+  }
+  if (!quiet) { pulses.push({ a, t0: performance.now() }); if (pulses.length > 40) pulses.shift(); }
+  recentTitles.push(item); if (recentTitles.length > 400) recentTitles.shift();
+}
+const pulses = [];
+
+async function prefill() {
+  const wikis = LANGS.filter(w => w !== 'other');
+  const all = [];
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  let shown = false;
+  const show = items => { items.sort((a, b) => a.ts - b.ts); for (const it of items) addToGraph(it, true); };
+  const grab = async (host, wiki, limit) => {
+    const u = `https://${host}/w/api.php?action=query&list=recentchanges&rcnamespace=0&rctype=edit|new&rclimit=${limit}&rcprop=title|flags|sizes|timestamp&format=json&formatversion=2&origin=*`;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const j = await wmJSON(u);
+        const items = (j?.query?.recentchanges || []).map(r => ({ wiki, title: r.title, bot: !!r.bot, delta: (r.newlen ?? 0) - (r.oldlen ?? 0), ts: Date.parse(r.timestamp) }));
+        if (shown) show(items); else all.push(...items);   // a late answer joins the sphere as soon as it comes
+        return;
+      } catch {   // refused or slow: wait until the site has rested, then ask once more
+        await wait(Math.max(3000, (resting.get(host)?.until || 0) - performance.now()) + Math.random() * 2000);
+      }
+    }
+  };
+  const jobs = [...wikis.map(w => () => grab(`${w}.wikipedia.org`, w, 110)), () => grab('www.wikidata.org', 'wikidata', 300)];
+  const runNext = async () => { while (jobs.length) await jobs.shift()(); };
+  // four at a time, not all at once; whatever has come in after eight seconds is shown, the rest follows
+  await Promise.race([Promise.all([runNext(), runNext(), runNext(), runNext()]), wait(8000)]);
+  shown = true;
+  show(all);
+}
+
+// ================= projection to the screen =================
+const _v = new THREE.Vector3();
+function project(p) {
+  _v.copy(p).applyMatrix4(world.matrixWorld).project(camera);
+  return [(_v.x * .5 + .5) * innerWidth, (-_v.y * .5 + .5) * innerHeight, _v.z];
+}
+const graphX = n => project(n.p)[0], graphY = n => project(n.p)[1];
+function facing(p) {          // 1 when a point on the sphere faces us, 0 at the rim, below 0 behind
+  _v.copy(p).applyQuaternion(world.quaternion).normalize();
+  const toCam = camera.position.clone().normalize();
+  return _v.dot(toCam);
+}
+
+const LANG_SHORT = { other: 'ІНШІ МОВИ' };
+function langLabel(key) { return LANG_SHORT[key] || (LANG_UA[key] || key).toUpperCase(); }
+
+function drawOverlay(now) {
+  const d = devicePixelRatio;
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+  ctx.clearRect(0, 0, innerWidth, innerHeight);
+  ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+  // language names float just above the surface
+  for (const [key, anchor] of anchors) {
+    const f = facing(anchor);
+    if (f < -.15) continue;
+    const [x, y] = project(anchor.clone().multiplyScalar(1.13));
+    ctx.font = `500 ${f > .5 ? 10 : 9}px ${MONO}`;
+    ctx.fillStyle = key === 'uk' ? `rgba(255,214,150,${.35 + .6 * Math.max(0, f)})` : `rgba(235,228,212,${.18 + .55 * Math.max(0, f)})`;
+    ctx.fillText(langLabel(key), x, y);
+  }
+  // the centre
+  const [cx, cy] = project(new THREE.Vector3());
+  ctx.font = `500 9px ${MONO}`; ctx.fillStyle = 'rgba(160,190,255,.55)';
+  ctx.fillText('ВІКІДАНІ', cx, cy);
+  // titles of the freshest edits on the near side
+  ctx.textAlign = 'left'; ctx.font = `400 10px ${MONO}`;
+  let shown = 0;
+  for (let i = pulses.length - 1; i >= 0 && shown < 12; i--) {
+    const p = pulses[i], age = (now - p.t0) / 2600;
+    if (age > 1 || !nodeByKey.has(p.a.key) || p.a.wiki === 'wikidata') continue;
+    if (facing(p.a.p) < .15) continue;
+    const [x, y] = project(p.a.p);
+    const name = p.a.title.length > 40 ? p.a.title.slice(0, 39) + '…' : p.a.title;
+    const right = x + 10 + ctx.measureText(name).width < innerWidth - 12;
+    ctx.textAlign = right ? 'left' : 'right';
+    ctx.fillStyle = `rgba(${COLORS_CSS[p.a.cls]},${.85 * (1 - age * age)})`;
+    ctx.fillText(name, x + (right ? 8 : -8), y);
+    shown++;
+  }
+  ctx.textAlign = 'left';
+  // quiet the space behind the edit on stage, or behind the lecture count when it is shown
+  const panelA = +getComputedStyle(lectureEl).opacity;
+  const quiet = panelA > .01 ? lectureEl : current;
+  if (quiet) {
+    const r = quiet.getBoundingClientRect(), a = quiet === lectureEl ? .2 * panelA : .18;
+    for (let i = 0; i < 5; i++) { const p = 60 - i * 12; ctx.fillStyle = `rgba(5,5,7,${a})`; ctx.fillRect(r.left - p, r.top - p * .7, r.width + p * 2, r.height + p * 1.4); }
+  }
+  if (!lectureOn) drawLink(now);
+}
+
+// from the article on the sphere to the edit on stage
+function drawLink(now) {
+  if (!link || !link.el.isConnected || !nodeByKey.has(link.node.key)) return;
+  const age = now - link.t0;
+  const a = age < 700 ? age / 700 : age < 7000 ? 1 : Math.max(0, 1 - (age - 7000) / 1600);
+  if (a <= 0) { link = null; return; }
+  const [x1, y1] = project(link.node.p), f = facing(link.node.p);
+  const r = link.el.getBoundingClientRect(), x2 = r.right + 14, y2 = r.top + r.height / 2;
+  const col = link.bot ? '156,195,255' : '242,196,108', va = a * (f > -.1 ? 1 : .35);
+  ctx.lineWidth = 1.2; ctx.strokeStyle = `rgba(${col},${.9 * va})`;
+  ctx.beginPath(); ctx.arc(x1, y1, 9 + Math.sin(now / 300) * 1.5, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x2, y2);
+  ctx.bezierCurveTo(x2 + 120, y2, x1 - 120, y1, x1 - 10, y1);
+  ctx.strokeStyle = `rgba(${col},${.45 * va})`; ctx.lineWidth = 1; ctx.stroke();
+  ctx.fillStyle = `rgba(${col},${va})`; ctx.beginPath(); ctx.arc(x2, y2, 2.2, 0, 7); ctx.fill();
+}
+
+const ticks = [];
+let highlightId = null;
+// ================= wikitext diff → one readable line =================
+const SKIP_COMMENT = /revert|undid|undo|\brv\b|скасува|відкинут|откат|rollback|vandal/i;
+const meaningful = s => (s.match(/[\p{L}\p{N}]/gu) || []).length;
+const cleanWiki = s => s
+  .replace(/<!--.*?-->/g, '').replace(/<\/?ref\b[^>]*>?/gi, '')
+  .replace(/<ref[^>]*\/>/gi, '').replace(/<ref[^>]*>[^<]*<\/ref>/gi, '').replace(/<\/?[a-z][^>]*>/gi, '')
+  .replace(/\[\[(?:[^\]|]*\|)?/g, '').replace(/\]\]/g, '').replace(/'{2,}/g, '')
+  .replace(/\{\{|\}\}/g, '').replace(/\s+/g, ' ');
+
+function cellRuns(td) {
+  if (!td) return null;
+  const out = [];
+  const walk = (node, changed) => {
+    for (const ch of node.childNodes) {
+      if (ch.nodeType === 3) out.push({ t: ch.textContent, c: changed });
+      else if (ch.nodeType === 1) walk(ch, changed || ch.classList.contains('diffchange'));
+    }
+  };
+  walk(td, false);
+  return out.map(r => ({ t: cleanWiki(r.t), c: r.c })).filter(r => r.t.length);
+}
+
+// Interleave the old and new versions of one line into [{t, type: ctx|del|ins}].
+function mergeRuns(A, B) {
+  const out = [];
+  const push = (t, type) => { if (!t) return; const l = out[out.length - 1]; if (l && l.type === type) l.t += t; else out.push({ t, type }); };
+  if (!A) { (B || []).forEach(r => push(r.t, 'ins')); return out; }
+  if (!B) { A.forEach(r => push(r.t, 'del')); return out; }
+  A = A.map(r => ({ ...r })); B = B.map(r => ({ ...r }));
+  let i = 0, j = 0;
+  while (i < A.length || j < B.length) {
+    const a = A[i], b = B[j];
+    if (a && a.c) { push(a.t, 'del'); i++; continue; }
+    if (b && b.c) { push(b.t, 'ins'); j++; continue; }
+    if (a && b) {
+      let k = 0;
+      while (k < a.t.length && k < b.t.length && a.t[k] === b.t[k]) k++;
+      if (k === 0) { push(a.t, 'del'); push(b.t, 'ins'); i++; j++; continue; }
+      push(a.t.slice(0, k), 'ctx');
+      a.t = a.t.slice(k); b.t = b.t.slice(k);
+      if (!a.t) i++;
+      if (!b.t) j++;
+      continue;
+    }
+    if (a) { push(a.t, 'del'); i++; } else { push(b.t, 'ins'); j++; }
+  }
+  return out;
+}
+
+function windowSeq(seq) {
+  const first = seq.findIndex(s => s.type !== 'ctx');
+  if (first < 0) return null;
+  let last = seq.length - 1;
+  while (seq[last].type === 'ctx') last--;
+  const out = [];
+  let pre = seq.slice(0, first).map(s => s.t).join('');
+  if (/^\s*\|/.test(pre)) pre = pre.replace(/^\s*\|\s*/, '').replace(/^([^=|]{1,48}?)\s*=\s*/, '$1: ');   // infobox "| key = value"
+  if (pre.length > 36) pre = '…' + pre.slice(-36).replace(/^\S*\s/, '');
+  if (pre.trim()) out.push({ t: pre, type: 'ctx' });
+  let budget = 105;
+  for (let i = first; i <= last && budget > 0; i++) {
+    let t = seq[i].t;
+    if (seq[i].type !== 'ctx' && t.length > 70) t = t.slice(0, 70).replace(/\s\S*$/, '') + '…';
+    if (seq[i].type === 'ctx' && t.length > 44) t = t.slice(0, 20) + ' … ' + t.slice(-20);
+    out.push({ t, type: seq[i].type });
+    budget -= t.length;
+  }
+  let post = seq.slice(last + 1).map(s => s.t).join('');
+  if (post.length > 40) post = post.slice(0, 40).replace(/\s\S*$/, '') + '…';
+  if (post.trim() && budget > 0) out.push({ t: post, type: 'ctx' });
+  return out;
+}
+
+function parseDiff(html) {
+  const doc = new DOMParser().parseFromString(`<table>${html}</table>`, 'text/html');
+  let best = null, bestScore = 0;
+  for (const tr of doc.querySelectorAll('tr')) {
+    const A = cellRuns(tr.querySelector('td.diff-deletedline'));
+    const B = cellRuns(tr.querySelector('td.diff-addedline'));
+    if (!A && !B) continue;
+    const seq = mergeRuns(A, B);
+    const changed = seq.filter(s => s.type !== 'ctx').map(s => s.t).join('');
+    const n = meaningful(changed);
+    if (!n) continue;
+    const hasDel = seq.some(s => s.type === 'del' && meaningful(s.t)), hasIns = seq.some(s => s.type === 'ins' && meaningful(s.t));
+    const raw = seq.map(s => s.t).join('');
+    const markup = (raw.match(/[|=!{}<>\[\]#*]/g) || []).length / Math.max(1, raw.length);
+    if (markup > .12 || /^\s*#(redirect|перенаправлення|перенаправление|weiterleitung)/i.test(raw)) continue;
+    if (/^\s*(\{\||\|-|\|\}|!)|\b(class|style|colspan|rowspan|align|width)\s*=/i.test(raw)) continue;   // table syntax
+    if ((raw.match(/\|/g) || []).length >= 3) continue;   // table rows: several cells in one line
+    if (/\b(thumb|miniatur\w*|mini|vignette|мініатюра|upright)\s*\||\b\d+px\b/i.test(raw)) continue;   // image markup
+    if (/\b(short description|infobox|reflist|defaultsort|authority control|navbox|commonscat|stub)\b|^\s*[\w ]{2,30}\|/i.test(raw)) continue;   // templates
+    if (/^\s*(multiple image|gallery|clear|main|see also|further|portal|coord|notelist|div col|div col end|col-begin|col-end)\s*$/i.test(raw)) continue;   // a bare template name
+    // infobox rows: only a changed value is worth showing, never an added/removed field or an image field
+    if (/^\s*\|/.test(raw) && (!A || !B || /^\s*\|\s*(image|file|logo|map|alt|caption|signature|зображення|файл|підпис|bild|imagen|immagine)\w*\s*=/i.test(raw))) continue;
+    let score = (hasDel && hasIns ? 12 : hasIns ? 5 : 3) + Math.min(n, 30) / 3 - Math.max(0, n - 140) / 20;
+    if (!A || !B) score -= meaningful(raw) < 14 ? 6 : 0;
+    if (markup > .05) score *= .4;
+    if (/https?:\/\//.test(raw)) score *= .4;
+    if (/\bcite\b|\|\s*[\w-]+\s*=[^|]*\|\s*[\w-]+\s*=/i.test(raw)) score *= .15;
+    if (/\b[\w-]+\.(com|org|net|gov|edu|io|info|ua|ru|de|fr|uk|it|es|pl)\b/i.test(raw)) score *= .4;
+    if (score > bestScore) { bestScore = score; best = seq; }
+  }
+  if (!best || bestScore < 3) return null;
+  // tags can be split across changed and unchanged parts; clean what is left of them
+  const out = windowSeq(best);
+  return out && out.map(s => ({ ...s, t: s.t.replace(/<\/?[a-z][^>]*>?|\/>/gi, ' ').replace(/ {2,}/g, ' ') })).filter(s => s.t.trim() || s.type === 'ctx');
+}
+
+// ================= the lecture: what people and bots wrote while we talked =================
+// Counted on every event of the stream, not in the frame loop, so the count goes on while this window is hidden behind the slides.
+// Kept in localStorage, so a reload in the middle of the lecture continues the count instead of starting from zero.
+const LKEY = 'wiki-sphere-lecture';
+const freshLecture = () => ({ start: Date.now(), all: 0, human: 0, bot: 0, wp: 0, wpHuman: 0, uk: 0, created: 0, langs: new Set(), titles: new Map() });
+let lecture = freshLecture(), lectureOn = false;
+try {
+  const s = JSON.parse(localStorage.getItem(LKEY) || 'null');
+  if (s && Date.now() - s.start < 4 * 3600e3) lecture = { ...freshLecture(), ...s, langs: new Set(s.langs), titles: new Map(s.titles) };
+} catch {}
+function saveLecture() {
+  if (lecture.titles.size > 60000) for (const [k, n] of lecture.titles) if (n < 2) lecture.titles.delete(k);
+  try {
+    const titles = [...lecture.titles].sort((a, b) => b[1] - a[1]).slice(0, 500);
+    localStorage.setItem(LKEY, JSON.stringify({ ...lecture, langs: [...lecture.langs], titles }));
+  } catch {}
+}
+setInterval(saveLecture, 10000);
+addEventListener('pagehide', saveLecture);
+document.addEventListener('visibilitychange', saveLecture);
+
+function countForLecture(ev) {
+  const L = lecture;
+  L.all++; if (ev.bot) L.bot++; else L.human++;
+  if (ev.namespace !== 0 || !ev.server_name?.endsWith('.wikipedia.org')) return;
+  const lang = ev.server_name.split('.')[0];
+  L.wp++; L.langs.add(lang);
+  if (lang === 'uk') L.uk++;
+  if (ev.type === 'new') L.created++;
+  if (ev.bot) return;
+  L.wpHuman++;
+  if (NSFW.test(ev.title)) return;
+  const key = lang + '|' + ev.title;
+  L.titles.set(key, (L.titles.get(key) || 0) + 1);
+}
+
+const plural = (n, one, few, many) => { const a = n % 10, b = n % 100; return a === 1 && b !== 11 ? one : a >= 2 && a <= 4 && (b < 12 || b > 14) ? few : many; };
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const sinceStart = () => { const m = Math.floor((Date.now() - lecture.start) / 60000); return m < 1 ? 'менше хвилини' : `${m} хв`; };
+const lectureEl = $('#lecture');
+function renderLecture() {
+  const L = lecture, pct = Math.round(100 * L.wpHuman / Math.max(1, L.wp));
+  const ranked = [...L.titles].sort((a, b) => b[1] - a[1]);
+  const top = ranked.slice(0, 3), ukTop = ranked.find(([k]) => k.startsWith('uk|'));
+  if (ukTop && !top.includes(ukTop)) top.push(ukTop);
+  const art = ([k, n]) => {
+    const i = k.indexOf('|'), lang = k.slice(0, i), title = k.slice(i + 1);
+    return `<div class="art">«${esc(title.length > 64 ? title.slice(0, 63) + '…' : title)}»<span>${LANG_UA[lang] || lang} · ${n} ${plural(n, 'раз', 'рази', 'разів')}</span></div>`;
+  };
+  lectureEl.innerHTML = `
+    <div class="k">з початку лекції · ${sinceStart()}</div>
+    <div class="big">${fmtN(L.all)}</div>
+    <div class="sub">${plural(L.all, 'правка', 'правки', 'правок')} у Вікіпедії та інших проєктах Вікімедіа</div>
+    <div class="row"><b>${fmtN(L.wp)}</b> — у статтях Вікіпедії ${fmtN(L.langs.size)} ${plural(L.langs.size, 'мовою', 'мовами', 'мовами')}</div>
+    <div class="row">з них людьми <b>${pct}%</b>, ботами <i>${100 - pct}%</i></div>
+    <div class="row"><b>${fmtN(L.uk)}</b> ${plural(L.uk, 'правка', 'правки', 'правок')} українською</div>
+    <div class="row"><b>${fmtN(L.created)}</b> ${plural(L.created, 'нова стаття', 'нові статті', 'нових статей')}</div>
+    ${top.length ? `<div class="top"><div class="k">найчастіше правили люди</div>${top.map(art).join('')}</div>` : ''}`;
+}
+setInterval(() => { if (lectureOn) renderLecture(); }, 500);
+function toggleLecture() {
+  lectureOn = !lectureOn;
+  if (lectureOn) renderLecture();
+  lectureEl.classList.toggle('on', lectureOn);
+  document.body.classList.toggle('lecture', lectureOn);
+}
+function restartLecture() {
+  lecture = freshLecture(); saveLecture();
+  if (lectureOn) renderLecture();
+  const hint = $('#hint'), was = hint.innerHTML;
+  hint.textContent = 'відлік лекції почато з нуля'; hint.classList.remove('off');
+  setTimeout(() => { hint.classList.add('off'); setTimeout(() => { hint.innerHTML = was; }, 900); }, 2500);
+}
+
+// ================= live stream =================
+const stats = { human: 0, bot: 0, added: 0, removed: 0, last: 0, sinceSnap: 0 };
+const cands = [], ready = [];
+let inflight = 0, lastNew = 0, ukOnly = false;
+
+function onEvent(ev) {
+  if (ev.type !== 'edit' && ev.type !== 'new') return;
+  countForLecture(ev);
+  const now = performance.now();
+  stats.last = now;
+  stats.sinceSnap++;
+  if (ev.bot) stats.bot++; else stats.human++;
+  const delta = (ev.length?.new ?? 0) - (ev.length?.old ?? 0);
+  if (delta > 0) stats.added += delta; else stats.removed -= delta;
+  ticks.push({ t: now, a: delta, bot: !!ev.bot, id: ev.meta?.id });
+
+  if (ev.namespace !== 0) return;
+  if (ev.server_name === 'www.wikidata.org') { addToGraph({ wiki: 'wikidata', title: ev.title, bot: !!ev.bot, delta, id: ev.meta?.id, user: ev.user }); return; }
+  if (!ev.server_name?.endsWith('.wikipedia.org')) return;
+  addToGraph({ wiki: ev.server_name.split('.')[0], title: ev.title, bot: !!ev.bot, delta, id: ev.meta?.id, user: ev.user });
+  if (SKIP_COMMENT.test(ev.comment || '') || NSFW.test(ev.title)) return;
+  const lang = ev.server_name.split('.')[0];
+  if (ev.type === 'new') {
+    if (now - lastNew > (lang === 'uk' ? 5000 : 20000)) {
+      lastNew = now;
+      ready.push({ kind: 'new', ev, t: now, seq: [{ t: ev.title, type: 'ins' }] });
+    }
+    return;
+  }
+  if (!ev.revision?.old || !ev.revision?.new) return;
+  const pri = (ev.bot ? .3 : 1) + (lang === 'uk' ? 3 : 0) + (/^(en|de|fr|pl|es|it)$/.test(lang) ? .3 : 0);
+  cands.push({ ev, pri, t: now });
+  if (cands.length > 120) cands.shift();
+}
+
+async function fetchNextDiff() {
+  const now = performance.now();
+  for (let i = ready.length - 1; i >= 0; i--) if (now - ready[i].t > 50000) ready.splice(i, 1);
+  if (inflight >= 2 || ready.length >= 6) return;
+  let bi = -1, bs = -Infinity;
+  cands.forEach((c, i) => {
+    if (ukOnly && !c.ev.server_name.startsWith('uk.')) return;
+    if (isResting(c.ev.server_name)) return;
+    const s = c.pri - (now - c.t) / 15000;
+    if (s > bs) { bs = s; bi = i; }
+  });
+  if (bi < 0) return;
+  const { ev, t } = cands.splice(bi, 1)[0];
+  if (now - t > 40000) return;
+  inflight++;
+  try {
+    const url = `https://${ev.server_name}/w/api.php?action=compare&fromrev=${ev.revision.old}&torev=${ev.revision.new}&prop=diff&format=json&formatversion=2&origin=*`;
+    const j = await wmJSON(url);
+    const seq = j?.compare?.body ? parseDiff(j.compare.body) : null;
+    if (seq && !NSFW.test(seq.map(s => s.t).join(' '))) ready.push({ kind: 'edit', ev, t: performance.now(), seq });
+  } catch {} finally { inflight--; }
+}
+setInterval(fetchNextDiff, 600);
+
+// ================= the edit, performed =================
+const LANG_UA = { uk: 'українська', en: 'англійська', de: 'німецька', fr: 'французька', pl: 'польська', es: 'іспанська',
+  it: 'італійська', ru: 'російська', ja: 'японська', zh: 'китайська', pt: 'португальська', nl: 'нідерландська',
+  sv: 'шведська', ar: 'арабська', fa: 'перська', he: 'іврит', cs: 'чеська', fi: 'фінська', tr: 'турецька',
+  ko: 'корейська', ce: 'чеченська', eu: 'баскська', ca: 'каталанська', hu: 'угорська', ro: 'румунська',
+  id: 'індонезійська', vi: 'вʼєтнамська', be: 'білоруська', ka: 'грузинська', hy: 'вірменська', simple: 'проста англійська',
+  da: 'данська', no: 'норвезька', el: 'грецька', bg: 'болгарська', sr: 'сербська', hr: 'хорватська', sk: 'словацька',
+  lt: 'литовська', lv: 'латиська', et: 'естонська', sl: 'словенська', th: 'тайська', hi: 'гінді', bn: 'бенгальська',
+  ast: 'астурійська', arz: 'єгипетська арабська', azb: 'південноазербайджанська', az: 'азербайджанська', kk: 'казахська' };
+
+function buildLine(line, seq) {
+  const parts = { dels: [], inss: [] };
+  for (const s of seq) {
+    const span = el('span', s.type);
+    if (s.type === 'ctx') span.textContent = s.t;
+    else {
+      for (const piece of s.t.split(/(\s+)/)) {
+        if (!piece) continue;
+        if (/^\s+$/.test(piece)) { span.append(el('span', 'ch', piece)); continue; }
+        const w = el('span', 'w');
+        for (const g of graphemes(piece)) w.append(el('span', 'ch', g));
+        span.append(w);
+      }
+      (s.type === 'del' ? parts.dels : parts.inss).push(span);
+    }
+    line.append(span);
+  }
+  return parts;
+}
+
+function ghost(c) {
+  const r = c.getBoundingClientRect();
+  if (!r.width) return;
+  const g = el('span', 'ghost', c.textContent);
+  const cs = getComputedStyle(c);
+  Object.assign(g.style, { left: r.left + 'px', top: r.top + 'px', fontSize: cs.fontSize, lineHeight: r.height + 'px' });
+  g.style.setProperty('--r', (Math.random() * 30 - 15).toFixed(1) + 'deg');
+  document.body.append(g);
+  setTimeout(() => g.remove(), 1100);
+}
+
+const stage = $('#stage');
+const stack = [];
+let current = null;
+// a finished edit folds back into its point on the map
+function recede() {
+  if (!current) return;
+  const b = current, r = b.getBoundingClientRect(), n = focusNode;
+  const tx = n ? graphX(n) : r.left + r.width / 2, ty = n ? graphY(n) : r.top - 80;
+  b.classList.add('past');
+  b.style.transform = `translate(${(tx - (r.left + r.width / 2)).toFixed(0)}px, ${(ty - (r.top + r.height / 2)).toFixed(0)}px) scale(.06)`;
+  b.style.opacity = '0';
+  b.style.filter = 'blur(2px)';
+  setTimeout(() => b.remove(), 2200);
+}
+
+const fmtN = n => n.toLocaleString('uk-UA');
+const ago = ts => { const s = Math.max(1, Math.round(Date.now() / 1000 - ts)); return s < 60 ? `${s} с тому` : `${Math.round(s / 60)} хв тому`; };
+async function perform(item) {
+  const { ev } = item;
+  const bot = !!ev.bot, lang = ev.server_name.split('.')[0];
+  const delta = (ev.length?.new ?? 0) - (ev.length?.old ?? 0);
+  const box = el('div', 'edit enter' + (bot ? ' bot' : ''));
+  const meta = el('div', 'meta');
+  meta.append(el('span', 'lang', LANG_UA[lang] || lang), el('span', 'who', bot ? 'бот' : 'людина'));
+  const titleEl = item.kind === 'new' ? el('span', 'kind', 'нова стаття') : el('span', 'title', ev.title);
+  meta.append(titleEl);
+  meta.append(el('span', 'delta', `${item.kind === 'new' ? fmtN(ev.length?.new ?? 0) + ' знаків' : `${delta > 0 ? '+' : delta < 0 ? '−' : '±'}${fmtN(Math.abs(delta))} знаків`} · ${ago(ev.timestamp)}`));
+  const line = el('div', 'line');
+  const parts = buildLine(line, item.seq);
+  box.append(meta, line);
+
+  recede();                      // uses the previous edit's point: focusNode changes just below
+  stage.append(box);
+  current = box;
+  highlightId = ev.meta?.id;
+  focusNode = nodeById.get(ev.meta?.id) || nodeByKey.get(`${lang}|${ev.title}`) || null;
+  if (focusNode) link = { node: focusNode, el: titleEl, t0: performance.now(), bot };
+  requestAnimationFrame(() => requestAnimationFrame(() => box.classList.remove('enter')));
+
+  await sleep(parts.dels.length ? 1700 : 900);           // time to read the old version
+  parts.dels.forEach(d => d.classList.add('strike'));
+  if (parts.dels.length) await sleep(bot ? 350 : 1000);
+
+  const caret = el('span', 'caret');
+  if (parts.dels.length) parts.dels[parts.dels.length - 1].after(caret);
+  else if (parts.inss.length) parts.inss[0].before(caret);
+  else line.append(caret);
+
+  if (!parts.inss.length) {
+    // only removed text: leave it struck through and let it go dim
+    caret.remove();
+    parts.dels.forEach(d => { d.style.transition = 'opacity 2s, background-size .55s'; d.style.opacity = '.45'; });
+    await sleep(2600);
+  } else if (bot) {
+    // a machine: everything changes at once
+    parts.dels.forEach(d => d.classList.add('flash'));
+    await sleep(140);
+    parts.dels.forEach(d => d.remove());
+    parts.inss.forEach(s => { s.querySelectorAll('.ch').forEach(c => c.classList.add('on')); s.classList.add('flash'); });
+    caret.remove();
+    await sleep(900);
+  } else {
+    // a person: backspace, hesitate, type
+    caret.classList.add('typing');
+    for (const d of [...parts.dels].reverse()) {
+      const chars = [...d.querySelectorAll('.ch')].reverse();
+      const per = Math.max(14, Math.min(60, 1200 / chars.length));
+      for (const c of chars) { ghost(c); c.style.display = 'none'; await sleep(per * (.7 + Math.random() * .6)); }
+      d.remove();
+    }
+    if (parts.inss.length) parts.inss[0].before(caret);
+    caret.classList.remove('typing');
+    await sleep(parts.dels.length ? 500 + Math.random() * 400 : 300);
+    caret.classList.add('typing');
+    const total = parts.inss.reduce((n, s) => n + s.querySelectorAll('.ch').length, 0);
+    const base = Math.max(26, Math.min(110, 4500 / Math.max(1, total)));
+    for (const s of parts.inss) {
+      for (const c of s.querySelectorAll('.ch')) {
+        c.classList.add('on');
+        c.after(caret);
+        let dt = base * (.55 + Math.random() * .9);
+        if (/\s/.test(c.textContent)) dt += base * .7;
+        if (/[.,;:!?)]/.test(c.textContent)) dt += 170;
+        if (Math.random() < .035) dt += 280 + Math.random() * 420;
+        await sleep(dt);
+      }
+    }
+    caret.classList.remove('typing');
+    await sleep(1400);
+    caret.remove();
+  }
+  await sleep(400);
+  parts.inss.forEach(s => s.classList.add('settled'));
+  await sleep(2600);
+}
+
+async function director() {
+  for (;;) {
+    let i = ready.findIndex(r => r.ev.server_name.startsWith('uk.'));
+    if (i < 0 && !ukOnly && ready.length) i = 0;
+    if (i < 0 || lectureOn) { await sleep(250); continue; }
+    await perform(ready.splice(i, 1)[0]);
+  }
+}
+
+// ================= HUD, keys, layout =================
+const hud = $('#hud');
+const fmt = n => n >= 10000 ? `${Math.round(n / 1000)} тис.` : fmtN(n);
+setInterval(() => {
+  const now = performance.now();
+  while (ticks.length && now - ticks[0].t > 60000) ticks.shift();
+  const all = Math.max(1, stats.human + stats.bot);
+  let linked = 0, shared = 0;
+  for (const q of qById.values()) { if (q.arts.size) linked++; if (q.arts.size > 1) shared++; }
+  const rate = Math.round(ticks.filter(k => now - k.t < 10000).length / 10);
+  hud.innerHTML = !stats.last
+    ? 'підключаюся до потоку правок…'
+    : now - stats.last > 8000
+    ? 'потік мовчить — перевір інтернет'
+    : `<b>${rate}</b> ${plural(rate, 'правка', 'правки', 'правок')} на секунду · люди <b>${Math.round(100 * stats.human / all)}%</b> · боти <i>${Math.round(100 * stats.bot / all)}%</i> · статей: ${fmtN(nodeByKey.size)} · понять: ${fmtN(linked)}, з них спільних для кількох мов: <b>${fmtN(shared)}</b>${ukOnly ? ' · лише українська' : ''}`
+      + `<br>з початку лекції (${sinceStart()}): ${fmt(lecture.all)} ${lecture.all >= 10000 ? 'правок' : plural(lecture.all, 'правка', 'правки', 'правок')}`;
+}, 500);
+setTimeout(() => $('#hint').classList.add('off'), 9000);
+
+let uiOn = true, zoom = 1, zoomTarget = 1;
+const clampZ = z => Math.max(.6, Math.min(2.4, z));
+addEventListener('keydown', e => {
+  const k = e.key.toLowerCase(), c = e.code;            // letters by physical key, so any keyboard layout works
+  if (c === 'KeyL') e.shiftKey ? restartLecture() : toggleLecture();
+  if (c === 'KeyU') ukOnly = !ukOnly;
+  if (c === 'KeyR') controls.autoRotate = !controls.autoRotate;
+  if (k === '=' || k === '+') zoomTarget = clampZ(zoomTarget * 1.15);
+  if (k === '-') zoomTarget = clampZ(zoomTarget / 1.15);
+  if (k === '0') zoomTarget = 1;
+  if (e.key === 'ArrowUp') tempo = Math.min(3, tempo * 1.25);
+  if (e.key === 'ArrowDown') tempo = Math.max(.4, tempo / 1.25);
+  if (c === 'KeyH') { uiOn = !uiOn; document.querySelectorAll('.ui').forEach(x => x.classList.toggle('off', !uiOn)); document.body.classList.toggle('nocursor', !uiOn); }
+  if (c === 'KeyF') document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+});
+
+function onResize() {
+  renderer.setSize(innerWidth, innerHeight, false);
+  camera.aspect = innerWidth / innerHeight;
+  camera.setViewOffset(innerWidth, innerHeight, -innerWidth * .21, 0, innerWidth, innerHeight);   // the sphere sits in the right half
+  camera.updateProjectionMatrix();
+  pointMat.uniforms.uPix.value = renderer.getPixelRatio();
+  overlay.width = innerWidth * devicePixelRatio; overlay.height = innerHeight * devicePixelRatio;
+}
+addEventListener('resize', onResize);
+
+// ================= frame loop =================
+let zoomShown = 1;
+function frame() {
+  requestAnimationFrame(frame);
+  const now = performance.now(), t = now / 1000;
+  controls.update();
+  // concepts drift towards the place under their languages
+  for (const q of qById.values()) {
+    if (q.p.distanceToSquared(q.target) < 1e-6) continue;
+    q.p.lerp(q.target, .04);
+    qs.pos.set([q.p.x, q.p.y, q.p.z], q.slot * 3); qs.dirty = true;
+    for (const a of q.arts) setRay(a);
+  }
+  for (const a of nodeByKey.values()) if (a.ray != null && !a.rayPlaced) { setRay(a); a.rayPlaced = true; }
+  for (const cl of [arts, qs]) if (cl.dirty) {
+    cl.dirty = false;
+    for (const name of ['position', 'aColor', 'aSize', 'aT']) cl.g.attributes[name].needsUpdate = true;
+  }
+  for (const name of ['position', 'aColor', 'aT', 'aBase']) rays.g.attributes[name].needsUpdate = true;
+  pointMat.uniforms.uTime.value = lineMat.uniforms.uTime.value = t;
+
+  zoom += (zoomTarget - zoom) * .15;
+  if (Math.abs(zoom - zoomShown) > .002) { zoomShown = zoom; document.documentElement.style.setProperty('--zoom', zoom.toFixed(3)); }
+
+  renderer.render(scene, camera);
+  drawOverlay(now);
+}
+
+// ================= start =================
+(async () => {
+  try {
+    await Promise.all([
+      document.fonts.load(`500 10px ${MONO}`, 'Aa Аа'),
+      document.fonts.load('400 40px Literata', 'Aa Аа'),
+      document.fonts.load('italic 400 20px Literata', 'Aa Аа'),
+    ]);
+  } catch {}
+  onResize();
+  frame();
+  prefill();                                   // history fills in alongside the live stream
+  const es = new EventSource('https://stream.wikimedia.org/v2/stream/recentchange');
+  es.onmessage = m => { try { onEvent(JSON.parse(m.data)); } catch {} };
+  director();
+})();
+</script>
+</body>
+</html>
